@@ -1,14 +1,16 @@
 #pragma config(Sensor, in1,    powerExpander,  sensorAnalog)
 #pragma config(Sensor, in2,    gyro,           sensorGyro)
-#pragma config(Sensor, dgtl1,  rightDriveQuad, sensorQuadEncoder)
-#pragma config(Sensor, dgtl8,  leftDriveQuad,  sensorQuadEncoder)
+#pragma config(Sensor, dgtl1,  leftLauncherQuad, sensorQuadEncoder)
+#pragma config(Sensor, dgtl5,  leftDriveQuad,  sensorQuadEncoder)
+#pragma config(Sensor, dgtl7,  rightDriveQuad, sensorQuadEncoder)
 #pragma config(Sensor, dgtl10, testPin,        sensorDigitalOut)
+#pragma config(Sensor, dgtl11, rightLauncherQuad, sensorQuadEncoder)
 #pragma config(Motor,  port1,           intakeRight,   tmotorVex393_HBridge, openLoop)
 #pragma config(Motor,  port2,           intakeLeft,    tmotorVex393_MC29, openLoop)
-#pragma config(Motor,  port3,           leftOuter,     tmotorVex393_MC29, openLoop)
-#pragma config(Motor,  port4,           leftInner,     tmotorVex393_MC29, openLoop)
-#pragma config(Motor,  port5,           rightInner,    tmotorVex393_MC29, openLoop)
-#pragma config(Motor,  port6,           rightOuter,    tmotorVex393_MC29, openLoop, reversed)
+#pragma config(Motor,  port3,           rightOuter,    tmotorVex393_MC29, openLoop)
+#pragma config(Motor,  port4,           rightInner,    tmotorVex393_MC29, openLoop)
+#pragma config(Motor,  port5,           leftInner,     tmotorVex393_MC29, openLoop)
+#pragma config(Motor,  port6,           leftOuter,     tmotorVex393_MC29, openLoop, reversed)
 #pragma config(Motor,  port7,           leftDriveFront, tmotorVex393_MC29, openLoop)
 #pragma config(Motor,  port8,           rightDriveFront, tmotorVex393_MC29, openLoop, reversed)
 #pragma config(Motor,  port9,           leftDriveBack, tmotorVex393_MC29, openLoop)
@@ -26,7 +28,7 @@
 
 //Setup LCD
 #define LCD_SAFETY_REQ_COMP_SWITCH
-#define MENU_NUM 7
+#define MENU_NUM 8
 #define USING_QUADS
 #define USING_GYRO
 
@@ -46,6 +48,7 @@ menu *endPreAutonMenu;
 menu *batteryVoltageMenu;
 menu *powerExpanderVoltageMenu;
 menu *backupBatteryVoltageMenu;
+menu *launcherControlMenu;
 
 //Whether or not to end pre auton
 bool endPreAuton = false;
@@ -63,10 +66,10 @@ void pre_auton()
   bStopTasksBetweenModes = true;
 
   //Setup launcher controller
-  vel_TBH_InitController(&tbh, leftDriveQuad, 0.25, 69);
-  vel_PID_InitController(&pid, leftDriveQuad, 0.1, 0.01);
-  bangBang_InitController(&bbLeft, leftDriveQuad, 127, 60);
-  bangBang_InitController(&bbRight, rightDriveQuad, 127, 60);
+  vel_TBH_InitController(&tbh, leftLauncherQuad, 0.25, 69);
+  vel_PID_InitController(&pid, rightLauncherQuad, 0.1, 0.01);
+  bangBang_InitController(&bbLeft, leftLauncherQuad, 127, 60);
+  bangBang_InitController(&bbRight, rightLauncherQuad, 127, 60);
 
   //Setups sensors
   initializeSensors();
@@ -88,6 +91,7 @@ void pre_auton()
 	programmingSkillsMenu = newMenu("Prog Skills", 3);
 	driverSkillsMenu = newMenu("Driver Skills", 4);
 	endPreAutonMenu = newMenu("Confirm", 1);
+	launcherControlMenu = newMenu("", 5);
 
 	string batteryVoltage;
 	sprintf(batteryVoltage, "Main: %1.2f%c", nAvgBatteryLevel / 1000.0, 'V');
@@ -124,7 +128,7 @@ task usercontrol()
 
 	//Launcher variables
 	bool launcherOn = false;
-	int targetVelocity = 0, targetVelocity_Last = 0;
+	int targetVelocity = 200, targetVelocity_Last = 0;
 	int launcherCurrentPower_Left = 0, launcherCurrentPower_Right = 0;
 
 	timer t;
@@ -135,10 +139,10 @@ task usercontrol()
 	{
 		if (timer_Repeat(&t, 100))
 		{
-			sprintf(lcdLine1, "TV: %d, CV: %d", bbLeft.targetVelocity, bbLeft.currentVelocity);
+			sprintf(lcdLine1, "TV: %d, CV: %d", targetVelocity, bbLeft.currentVelocity);
 			displayLCDCenteredString(0, lcdLine1);
 
-			sprintf(lcdLine2, "E: %d", bbLeft.error);
+			sprintf(lcdLine2, "LE: %d, RE: %d", bbLeft.error, bbRight.error);
 			displayLCDCenteredString(1, lcdLine2);
 		}
 
@@ -214,6 +218,8 @@ task usercontrol()
 		}
 		else
 		{
+			bangBang_StepVelocity(&bbLeft);
+			bangBang_StepVelocity(&bbRight);
 			setLauncherMotors(0);
 		}
 
@@ -225,6 +231,12 @@ task usercontrol()
 		else if (vexRT[JOY_BTN_RD])
 		{
 			targetVelocity -= 10;
+			waitForZero(vexRT[JOY_BTN_RD]);
+		}
+
+		if (vexRT[JOY_BTN_RL])
+		{
+			targetVelocity = 180;
 			waitForZero(vexRT[JOY_BTN_RD]);
 		}
 
