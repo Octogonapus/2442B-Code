@@ -48,7 +48,6 @@ menu *endPreAutonMenu;
 menu *batteryVoltageMenu;
 menu *powerExpanderVoltageMenu;
 menu *backupBatteryVoltageMenu;
-menu *launcherControlMenu;
 
 //Whether or not to end pre auton
 bool endPreAuton = false;
@@ -68,8 +67,8 @@ void pre_auton()
   //Setup launcher controller
   vel_TBH_InitController(&tbh, leftLauncherQuad, 0.25, 69);
   vel_PID_InitController(&pid, rightLauncherQuad, 0.1, 0.01);
-  bangBang_InitController(&bbLeft, leftLauncherQuad, 127, 60);
-  bangBang_InitController(&bbRight, rightLauncherQuad, 127, 60);
+  bangBang_InitController(&bbLeft, leftLauncherQuad, 110, 60);
+  bangBang_InitController(&bbRight, rightLauncherQuad, 100, 40);
 
   //Setups sensors
   initializeSensors();
@@ -91,7 +90,6 @@ void pre_auton()
 	programmingSkillsMenu = newMenu("Prog Skills", 3);
 	driverSkillsMenu = newMenu("Driver Skills", 4);
 	endPreAutonMenu = newMenu("Confirm", 1);
-	launcherControlMenu = newMenu("", 5);
 
 	string batteryVoltage;
 	sprintf(batteryVoltage, "Main: %1.2f%c", nAvgBatteryLevel / 1000.0, 'V');
@@ -119,6 +117,12 @@ task autonomous()
 	startAutonomous();
 }
 
+//int targetVelocity = 190, targetVelocity_Last = 0;
+//int launcherCurrentPower_Left = 0, launcherCurrentPower_Right = 0;
+
+//void test_15ms();
+//void test_5ms();
+
 task usercontrol()
 {
 	startTask(motorSlewRateTask);
@@ -128,13 +132,17 @@ task usercontrol()
 
 	//Launcher variables
 	bool launcherOn = false;
-	int targetVelocity = 200, targetVelocity_Last = 0;
+	int targetVelocity = 190, targetVelocity_Last = 0, targetVelocity_Increment = 5;
 	int launcherCurrentPower_Left = 0, launcherCurrentPower_Right = 0;
 
 	timer t;
 	timer_Initialize(&t);
 	string lcdLine1, lcdLine2;
 
+	float avgError_left = 0, avgError_right = 0;
+	int iter = 0;
+
+	//while (timer_GetDTFromStart(&t) < 2000)
 	while (true)
 	{
 		if (timer_Repeat(&t, 100))
@@ -142,7 +150,7 @@ task usercontrol()
 			sprintf(lcdLine1, "TV: %d, CV: %d", targetVelocity, bbLeft.currentVelocity);
 			displayLCDCenteredString(0, lcdLine1);
 
-			sprintf(lcdLine2, "LE: %d, RE: %d", bbLeft.error, bbRight.error);
+			//sprintf(lcdLine2, "LE: %d, RE: %d", bbLeft.error, bbRight.error);
 			displayLCDCenteredString(1, lcdLine2);
 		}
 
@@ -223,26 +231,61 @@ task usercontrol()
 			setLauncherMotors(0);
 		}
 
+		//Adjust launcher target velocity
 		if (vexRT[JOY_BTN_RU])
 		{
-			targetVelocity += 10;
+			targetVelocity += targetVelocity_Increment;
 			waitForZero(vexRT[JOY_BTN_RU]);
 		}
 		else if (vexRT[JOY_BTN_RD])
 		{
-			targetVelocity -= 10;
+			targetVelocity -= targetVelocity_Increment;
 			waitForZero(vexRT[JOY_BTN_RD]);
 		}
 
+		//Target velocity presets
 		if (vexRT[JOY_BTN_RL])
 		{
 			targetVelocity = 180;
-			waitForZero(vexRT[JOY_BTN_RD]);
+			waitForZero(vexRT[JOY_BTN_RL]);
+		}
+		else if (vexRT[JOY_BTN_RR])
+		{
+			targetVelocity = 210;
+			waitForZero(vexRT[JOY_BTN_RR]);
+		}
+
+		avgError_left += bangBang_GetError(&bbLeft);
+		avgError_right += bangBang_GetError(&bbRight);
+		iter++;
+
+		//Average and reset
+		if (iter >= 500)
+		{
+			avgError_left /= iter;
+			avgError_right /= iter;
+			iter = 0;
+
+			sprintf(lcdLine2, "L:%1.2f, R:%1.2f", avgError_left, avgError_right);
+
+			avgError_left = 0;
+			avgError_right = 0;
 		}
 
 		//Main loop wait
 		wait1Msec(15);
 	}
+
+	//test_15ms();
+	//test_15ms();
+	//test_15ms();
+	//test_15ms();
+	//test_15ms();
+	////test_5ms();
+	////test_5ms();
+
+	//stopTask(motorSlewRateTask);
+	//allMotorsOff();
 }
 
 //Run an autonomous function based on current selection
@@ -330,3 +373,113 @@ void invoke(int func)
 			break;
 	}
 }
+
+//void test_15ms()
+//{
+//	timer lt;
+//	timer_Initialize(&lt);
+
+//	float avgError_left = 0, avgError_right = 0;
+//	int iter = 0;
+
+//	writeDebugStreamLine("15 ms test");
+
+//	timer_PlaceMarker(&lt);
+//	while (timer_GetDTFromMarker(&lt) < 5000)
+//	{
+//		//Set new target velocity if target changed
+//		if (targetVelocity != targetVelocity_Last)
+//		{
+//			//vel_TBH_SetTargetVelocity(&tbh, targetVelocity);
+//			//vel_PID_SetTargetVelocity(&pid, targetVelocity);
+//			bangBang_SetTargetVelocity(&bbLeft, targetVelocity);
+//			bangBang_SetTargetVelocity(&bbRight, targetVelocity);
+//		}
+
+//		//Remember old target velocity
+//		targetVelocity_Last = targetVelocity;
+
+//		//Step controller
+//		//launcherCurrentPower = vel_TBH_StepController(&tbh);
+//		//launcherCurrentPower = vel_PID_StepController(&pid);
+//		launcherCurrentPower_Left = bangBang_StepController(&bbLeft);
+//		launcherCurrentPower_Right = bangBang_StepController(&bbRight);
+
+//		//Bound power
+//		//launcherCurrentPower = launcherCurrentPower < 0 ? 0 : launcherCurrentPower;
+//		launcherCurrentPower_Left = launcherCurrentPower_Left < 0 ? 0 : launcherCurrentPower_Left;
+//		launcherCurrentPower_Right = launcherCurrentPower_Right < 0 ? 0 : launcherCurrentPower_Right;
+
+//		//Send power to motors
+//		//setLauncherMotors(launcherCurrentPower);
+//		setLeftLauncherMotors(launcherCurrentPower_Left);
+//		setRightLauncherMotors(launcherCurrentPower_Right);
+
+//		avgError_left += bangBang_GetError(&bbLeft);
+//		avgError_right += bangBang_GetError(&bbRight);
+//		iter++;
+
+//		//Main loop wait
+//		wait1Msec(15);
+//	}
+
+//	avgError_left /= iter;
+//	avgError_right /= iter;
+
+//	writeDebugStreamLine("Average Error at 15ms; Left: %1.2f, Right: %1.2f", avgError_left, avgError_right);
+//}
+
+//void test_5ms()
+//{
+//	timer lt;
+//	timer_Initialize(&lt);
+
+//	float avgError_left = 0, avgError_right = 0;
+//	int iter = 0;
+
+//	writeDebugStreamLine("5 ms test");
+
+//	timer_PlaceMarker(&lt);
+//	while (timer_GetDTFromMarker(&lt) < 5000)
+//	{
+//		//Set new target velocity if target changed
+//		if (targetVelocity != targetVelocity_Last)
+//		{
+//			//vel_TBH_SetTargetVelocity(&tbh, targetVelocity);
+//			//vel_PID_SetTargetVelocity(&pid, targetVelocity);
+//			bangBang_SetTargetVelocity(&bbLeft, targetVelocity);
+//			bangBang_SetTargetVelocity(&bbRight, targetVelocity);
+//		}
+
+//		//Remember old target velocity
+//		targetVelocity_Last = targetVelocity;
+
+//		//Step controller
+//		//launcherCurrentPower = vel_TBH_StepController(&tbh);
+//		//launcherCurrentPower = vel_PID_StepController(&pid);
+//		launcherCurrentPower_Left = bangBang_StepController(&bbLeft);
+//		launcherCurrentPower_Right = bangBang_StepController(&bbRight);
+
+//		//Bound power
+//		//launcherCurrentPower = launcherCurrentPower < 0 ? 0 : launcherCurrentPower;
+//		launcherCurrentPower_Left = launcherCurrentPower_Left < 0 ? 0 : launcherCurrentPower_Left;
+//		launcherCurrentPower_Right = launcherCurrentPower_Right < 0 ? 0 : launcherCurrentPower_Right;
+
+//		//Send power to motors
+//		//setLauncherMotors(launcherCurrentPower);
+//		setLeftLauncherMotors(launcherCurrentPower_Left);
+//		setRightLauncherMotors(launcherCurrentPower_Right);
+
+//		avgError_left += bangBang_GetError(&bbLeft);
+//		avgError_right += bangBang_GetError(&bbRight);
+//		iter++;
+
+//		//Main loop wait
+//		wait1Msec(5);
+//	}
+
+//	avgError_left /= iter;
+//	avgError_right /= iter;
+
+//	writeDebugStreamLine("Average Error at 5ms; Left: %1.2f, Right: %1.2f", avgError_left, avgError_right);
+//}

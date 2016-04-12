@@ -39,6 +39,10 @@ void initializeSensors()
 	SensorValue[leftDriveQuad] = 0;
 	_sensorResetTypeTo(rightDriveQuad, sensorQuadEncoder);
 	SensorValue[rightDriveQuad] = 0;
+	_sensorResetTypeTo(leftLauncherQuad, sensorQuadEncoder);
+	SensorValue[leftLauncherQuad] = 0;
+	_sensorResetTypeTo(rightLauncherQuad, sensorQuadEncoder);
+	SensorValue[rightLauncherQuad] = 0;
 
 	//writeDebugStreamLine("calibrating gyro");
 	SensorType[gyro] = sensorNone;
