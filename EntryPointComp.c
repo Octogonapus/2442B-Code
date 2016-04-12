@@ -5,8 +5,8 @@
 #pragma config(Sensor, dgtl7,  rightDriveQuad, sensorQuadEncoder)
 #pragma config(Sensor, dgtl10, testPin,        sensorDigitalOut)
 #pragma config(Sensor, dgtl11, rightLauncherQuad, sensorQuadEncoder)
-#pragma config(Motor,  port1,           intakeRight,   tmotorVex393_HBridge, openLoop)
-#pragma config(Motor,  port2,           intakeLeft,    tmotorVex393_MC29, openLoop)
+#pragma config(Motor,  port1,           intakeRight,   tmotorVex393_HBridge, openLoop, reversed)
+#pragma config(Motor,  port2,           intakeLeft,    tmotorVex393_MC29, openLoop, reversed)
 #pragma config(Motor,  port3,           rightOuter,    tmotorVex393_MC29, openLoop)
 #pragma config(Motor,  port4,           rightInner,    tmotorVex393_MC29, openLoop)
 #pragma config(Motor,  port5,           leftInner,     tmotorVex393_MC29, openLoop)
@@ -57,7 +57,7 @@ int autonSelection = -1;
 
 //Launcher velocity controller
 vel_TBH tbh;
-vel_PID pid;
+vel_PID pidLeft, pidRight;
 bangBang bbLeft, bbRight;
 
 void pre_auton()
@@ -66,7 +66,8 @@ void pre_auton()
 
   //Setup launcher controller
   vel_TBH_InitController(&tbh, leftLauncherQuad, 0.25, 69);
-  vel_PID_InitController(&pid, rightLauncherQuad, 0.1, 0.01);
+  vel_PID_InitController(&pidLeft, leftLauncherQuad, 0.05, 0.008);
+  vel_PID_InitController(&pidRight, rightLauncherQuad, 0.055, 0.02);
   bangBang_InitController(&bbLeft, leftLauncherQuad, 110, 60);
   bangBang_InitController(&bbRight, rightLauncherQuad, 100, 40);
 
@@ -132,7 +133,7 @@ task usercontrol()
 
 	//Launcher variables
 	bool launcherOn = false;
-	int targetVelocity = 190, targetVelocity_Last = 0, targetVelocity_Increment = 5;
+	int targetVelocity = 190, targetVelocity_Last = 0, targetVelocity_Increment = 2;
 	int launcherCurrentPower_Left = 0, launcherCurrentPower_Right = 0;
 
 	timer t;
@@ -142,7 +143,8 @@ task usercontrol()
 	float avgError_left = 0, avgError_right = 0;
 	int iter = 0;
 
-	//while (timer_GetDTFromStart(&t) < 2000)
+	//writeDebugStreamLine("Left Error, Right Error");
+	//while (timer_GetDTFromStart(&t) < 5000)
 	while (true)
 	{
 		if (timer_Repeat(&t, 100))
@@ -153,6 +155,8 @@ task usercontrol()
 			//sprintf(lcdLine2, "LE: %d, RE: %d", bbLeft.error, bbRight.error);
 			displayLCDCenteredString(1, lcdLine2);
 		}
+
+		//writeDebugStreamLine("%d,%d", pidLeft.error, pidRight.error);
 
 		/* ------------ DRIVETRAIN ------------ */
 
@@ -200,9 +204,10 @@ task usercontrol()
 			if (targetVelocity != targetVelocity_Last)
 			{
 				//vel_TBH_SetTargetVelocity(&tbh, targetVelocity);
-				//vel_PID_SetTargetVelocity(&pid, targetVelocity);
-				bangBang_SetTargetVelocity(&bbLeft, targetVelocity);
-				bangBang_SetTargetVelocity(&bbRight, targetVelocity);
+				vel_PID_SetTargetVelocity(&pidLeft, targetVelocity);
+				vel_PID_SetTargetVelocity(&pidRight, targetVelocity);
+				//bangBang_SetTargetVelocity(&bbLeft, targetVelocity);
+				//bangBang_SetTargetVelocity(&bbRight, targetVelocity);
 			}
 
 			//Remember old target velocity
@@ -210,9 +215,10 @@ task usercontrol()
 
 			//Step controller
 			//launcherCurrentPower = vel_TBH_StepController(&tbh);
-			//launcherCurrentPower = vel_PID_StepController(&pid);
-			launcherCurrentPower_Left = bangBang_StepController(&bbLeft);
-			launcherCurrentPower_Right = bangBang_StepController(&bbRight);
+			launcherCurrentPower_Left = vel_PID_StepController(&pidLeft);
+			launcherCurrentPower_Right = vel_PID_StepController(&pidRight);
+			//launcherCurrentPower_Left = bangBang_StepController(&bbLeft);
+			//launcherCurrentPower_Right = bangBang_StepController(&bbRight);
 
 			//Bound power
 			//launcherCurrentPower = launcherCurrentPower < 0 ? 0 : launcherCurrentPower;
@@ -226,8 +232,10 @@ task usercontrol()
 		}
 		else
 		{
-			bangBang_StepVelocity(&bbLeft);
-			bangBang_StepVelocity(&bbRight);
+			vel_PID_StepVelocity(&pidLeft);
+			vel_PID_StepVelocity(&pidRight);
+			//bangBang_StepVelocity(&bbLeft);
+			//bangBang_StepVelocity(&bbRight);
 			setLauncherMotors(0);
 		}
 
