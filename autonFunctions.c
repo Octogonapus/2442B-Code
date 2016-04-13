@@ -160,14 +160,11 @@ byte driveTime(const int leftPower, const int rightPower, const int timeMs)
 /* Subroutine - Drives for distance in units (default: inches)             */
 /*                                                                         */
 /***************************************************************************/
-byte driveQuad(const int power, const int ticks, const float percentage = 0.1)
+byte driveQuad(const int power, const int ticks, const int timeout = 1000, const float percentage = 0.1)
 {
 	//Clear encoders
 	SensorValue[leftDriveQuad] = 0;
 	SensorValue[rightDriveQuad] = 0;
-
-	//Loop timeout
-	const int timeout = 1000;
 
 	//Timer for timeout
 	timer t;
@@ -195,6 +192,13 @@ byte driveQuad(const int power, const int ticks, const float percentage = 0.1)
 		setLeftDriveMotorsRaw(power);
 		setRightDriveMotorsRaw(power + rMod);
 
+		//Exit if taking too long
+		if (timer_GetDTFromMarker(&t) > timeout)
+		{
+			setDriveMotorsRaw(0);
+			return 1;
+		}
+
 		wait1Msec(1);
 	}
 
@@ -211,6 +215,13 @@ byte driveQuad(const int power, const int ticks, const float percentage = 0.1)
 		setLeftDriveMotorsRaw(power / 3);
 		setRightDriveMotorsRaw((power / 3) + rMod);
 
+		//Exit if taking too long
+		if (timer_GetDTFromMarker(&t) > timeout)
+		{
+			setDriveMotorsRaw(0);
+			return 1;
+		}
+
 		wait1Msec(1);
 	}
 
@@ -225,14 +236,11 @@ byte driveQuad(const int power, const int ticks, const float percentage = 0.1)
 /* Subroutine - Drives for distance in units (default: inches) using PID   */
 /*                                                                         */
 /***************************************************************************/
-byte driveQuad_PID(const int ticks)
+byte driveQuad_PID(const int ticks, const int timeout = 1000)
 {
 	//Clear encoders
 	SensorValue[leftDriveQuad] = 0;
 	SensorValue[rightDriveQuad] = 0;
-
-	//Loop timeout
-	const int timeout = 1000;
 
 	//Timer for timeout
 	timer t;
@@ -278,8 +286,7 @@ byte driveQuad_PID(const int ticks)
 		}
 
 		wait1Msec(10);
-	}
-	while (abs(pos_PID_GetError(&leftPID)) > 0 || abs(pos_PID_GetError(&rightPID)) > 0);
+	} while (abs(pos_PID_GetError(&leftPID)) > 0 || abs(pos_PID_GetError(&rightPID)) > 0);
 
 	//Stop
 	setDriveMotorsRaw(0);
@@ -296,7 +303,7 @@ byte driveQuad_PID(const int ticks)
 /* Subroutine - Drives for distance in units (default: inches)             */
 /*                                                                         */
 /***************************************************************************/
-byte driveIME(const int power, const int ticks, const float percentage = 0.1)
+byte driveIME(const int power, const int ticks, const int timeout = 1000, const float percentage = 0.1)
 {
 	nMotorEncoder[leftDriveFront] = 0;                          //Clear left IME
 	nMotorEncoder[rightDriveFront] = 0;                         //Clear right IME
@@ -311,6 +318,13 @@ byte driveIME(const int power, const int ticks, const float percentage = 0.1)
 		rMod = sgn(rDiff) * power * percentage;                                              //10% of power in the direction of rDiff
 		setLeftDriveMotorsRaw(power);                                                        //Directly control left side
 		setRightDriveMotorsRaw(power + rMod);                                                //Have right side adjust to keep in tune with left side
+
+		//Exit if taking too long
+		if (timer_GetDTFromMarker(&t) > timeout)
+		{
+			setDriveMotorsRaw(0);
+			return 1;
+		}
 	}
 
 	//1/3 power for last 40% of ticks
@@ -320,6 +334,13 @@ byte driveIME(const int power, const int ticks, const float percentage = 0.1)
 		rMod = sgn(rDiff) * power * percentage;                                              //10% of power in the direction of rDiff
 		setLeftDriveMotorsRaw(power / 3);                                                    //Directly control left side
 		setRightDriveMotorsRaw((power / 3) + rMod);                                          //Have right side adjust to keep in tune with left side
+
+		//Exit if taking too long
+		if (timer_GetDTFromMarker(&t) > timeout)
+		{
+			setDriveMotorsRaw(0);
+			return 1;
+		}
 	}
 
 	driveTime(-1 * (power / 2), -1 * (power / 2), 50);    //Brake at -50% power for a short time to eliminate momentum
@@ -388,9 +409,10 @@ byte driveIME_PID(const int ticks)
 
 		wait1Msec(10);
 
-	} while (abs(pos_PID_GetError(&leftPID)) > 0);
+	} while(abs(pos_PID_GetError(&leftPID)) > 0);
 
-	setAllDriveMotorsRaw(0);                              //Stop
+	//Stop
+	setAllDriveMotorsRaw(0);
 
 	return 0;
 }
