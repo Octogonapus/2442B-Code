@@ -160,7 +160,111 @@ byte driveTime(const int leftPower, const int rightPower, const int timeMs)
 /* Subroutine - Drives for distance in units (default: inches)             */
 /*                                                                         */
 /***************************************************************************/
-//byte driveQuad(const int power, const int ticks)
+byte driveQuad(const int power, const int ticks)
+{
+	//Clear encoders
+	SensorValue[leftDriveQuad] = 0;
+	SensorValue[rightDriveQuad] = 0;
+
+	//Loop timeout
+	const int timeout = 1000;
+
+	//Timer for timeout
+	timer t;
+	timer_Initialize(&t);
+
+	//Position PID controllers for driving
+	pos_PID leftPID, rightPID;
+	pos_PID_InitController(&leftPID, leftDriveQuad, 0.5, 0, 0.04);
+	pos_PID_InitController(&rightPID, rightDriveQuad, 0.5, 0, 0.04);
+
+	//Set controllers' target position
+	pos_PID_SetTargetPosition(&leftPID, ticks);
+	pos_PID_SetTargetPosition(&rightPID, ticks);
+
+	//Marker for timeout
+	timer_PlaceMarker(&t);
+
+	//Drive to target
+	do
+	{
+		//Step controllers
+		pos_PID_StepController(&leftPID);
+		pos_PID_StepController(&rightPID);
+
+		//Set drive to controllers' outputs
+		setLeftDriveMotorsRaw(pos_PID_GetOutput(&leftPID));
+		setRightDriveMotorsRaw(pos_PID_GetOutput(&rightPID));
+
+		//writeDebugStreamLine("%d, %d", pos_PID_GetError(&leftPID), pos_PID_GetError(&rightPID));
+
+		//Exit if taking too long
+		if (timer_GetDTFromMarker(&t) > timeout)
+		{
+			setDriveMotorsRaw(0);
+			return 1;
+		}
+
+		//Exit if both controller's outputs have dropped too low to move the robot
+		if (abs(pos_PID_GetOutput(&leftPID)) <= 10 && abs(pos_PID_GetOutput(&rightPID)) <= 10)
+		{
+			setDriveMotorsRaw(0);
+			return 1;
+		}
+
+		wait1Msec(10);
+	}
+	while (abs(pos_PID_GetError(&leftPID)) > 0 || abs(pos_PID_GetError(&rightPID)) > 0);
+
+	// //Difference between sides
+	// int rDiff;
+
+	// //10% of power in the direction of rDiff
+	// int rMod;
+
+	// //Full power for 90% of ticks
+	// while (abs(SensorValue[leftDriveQuad]) < abs(ticks) * 0.9)
+	// {
+	// 	//Difference between left and right sides
+	// 	rDiff = abs(SensorValue[leftDriveQuad]) - abs(SensorValue[rightDriveQuad]);
+
+	// 	//10% of power in the direction of rDiff, determined by which side is lagging
+	// 	rMod = sgn(rDiff) * power * 0.1;
+
+	// 	//Directly contorl left side and have right side follow
+	// 	setLeftDriveMotorsRaw(power);
+	// 	setRightDriveMotorsRaw(power + rMod);
+
+	// 	wait1Msec(1);
+	// }
+
+	// //1/3 power for last 10% of ticks
+	// while (abs(SensorValue[leftDriveQuad]) < abs(ticks) - 10)
+	// {
+	// 	//Difference between sides
+	// 	rDiff = abs(SensorValue[leftDriveQuad]) - abs(SensorValue[rightDriveQuad]);
+
+	// 	//10% of power in the direction of rDiff, determined by which side is lagging
+	// 	rMod = sgn(rDiff) * power * 0.1;
+
+	// 	//Directly control left side and have right side follow
+	// 	setLeftDriveMotorsRaw(power / 3);
+	// 	setRightDriveMotorsRaw((power / 3) + rMod);
+
+	// 	wait1Msec(1);
+	// }
+
+	// driveTime(-1 * (power / 2), -1 * (power / 2), 50);    //Brake at -50% power for a short time to eliminate momentum
+	setDriveMotorsRaw(0);                                 //Stop
+
+	return 0;
+}
+
+/***************************************************************************/
+/*                                                                         */
+/* Subroutine - Drives for distance in units (default: inches) using PID   */
+/*                                                                         */
+/***************************************************************************/
 byte driveQuad(const int ticks)
 {
 	//Clear encoders
@@ -193,9 +297,11 @@ byte driveQuad(const int ticks)
 		pos_PID_StepController(&leftPID);
 		pos_PID_StepController(&rightPID);
 
-		//Set drive to controllers' output
+		//Set drive to controllers' outputs
 		setLeftDriveMotorsRaw(pos_PID_GetOutput(&leftPID));
 		setRightDriveMotorsRaw(pos_PID_GetOutput(&rightPID));
+
+		//writeDebugStreamLine("%d, %d", pos_PID_GetError(&leftPID), pos_PID_GetError(&rightPID));
 
 		//Exit if taking too long
 		if (timer_GetDTFromMarker(&t) > timeout)
@@ -268,7 +374,7 @@ byte driveQuad(const int ticks)
 /* Subroutine - Drives for distance in units (default: inches)             */
 /*                                                                         */
 /***************************************************************************/
-byte driveIME(const int power, const int ticks)
+byte driveIME(const int power, const int ticks, const float percentage = 0.1)
 {
 	nMotorEncoder[leftDriveFront] = 0;                          //Clear left IME
 	nMotorEncoder[rightDriveFront] = 0;                         //Clear right IME
@@ -280,7 +386,7 @@ byte driveIME(const int power, const int ticks)
 	while (abs(nMotorEncoder[leftDriveFront]) < abs(ticks) * 0.6)
 	{
 		rDiff = abs(nMotorEncoder[leftDriveFront]) - abs(nMotorEncoder[rightDriveFront]);    //Difference between sides
-		rMod = sgn(rDiff) * power * 0.1;                                                     //10% of power in the direction of rDiff
+		rMod = sgn(rDiff) * power * percentage;                                              //10% of power in the direction of rDiff
 		setLeftDriveMotorsRaw(power);                                                        //Directly control left side
 		setRightDriveMotorsRaw(power + rMod);                                                //Have right side adjust to keep in tune with left side
 	}
@@ -289,12 +395,79 @@ byte driveIME(const int power, const int ticks)
 	while (abs(nMotorEncoder[leftDriveFront]) < abs(ticks))
 	{
 		rDiff = abs(nMotorEncoder[leftDriveFront]) - abs(nMotorEncoder[rightDriveFront]);    //Difference between sides
-		rMod = sgn(rDiff) * power * 0.1;                                                     //10% of power in the direction of rDiff
+		rMod = sgn(rDiff) * power * percentage;                                              //10% of power in the direction of rDiff
 		setLeftDriveMotorsRaw(power / 3);                                                    //Directly control left side
 		setRightDriveMotorsRaw((power / 3) + rMod);                                          //Have right side adjust to keep in tune with left side
 	}
 
 	driveTime(-1 * (power / 2), -1 * (power / 2), 50);    //Brake at -50% power for a short time to eliminate momentum
+	setAllDriveMotorsRaw(0);                              //Stop
+
+	return 0;
+}
+
+/***************************************************************************/
+/*                                                                         */
+/* Subroutine - Drives for distance in units (default: inches) using PID   */
+/*                                                                         */
+/***************************************************************************/
+byte driveIME_PID(const int ticks)
+{
+	nMotorEncoder[leftDriveFront] = 0;                          //Clear left IME
+	nMotorEncoder[rightDriveFront] = 0;                         //Clear right IME
+
+	//Difference between sides
+	float rDiff = 0;
+
+	//Loop timeout
+	const int timeout = 1000;
+
+	//Timer for timeout
+	timer t;
+	timer_Initialize(&t);
+
+	//Position PID controllers for driving
+	pos_PID leftPID, rightPID;
+	pos_PID_InitController(&leftPID, leftDriveFront, 0.5, 0, 0.04);
+	pos_PID_InitController(&rightPID, &rDiff, 0.5, 0, 0.04);
+
+	//Marker for timeout
+	timer_PlaceMarker(&t);
+
+	//Drive to target
+	do
+	{
+		//Update rDiff
+		rDiff - nMotorEncoder[leftDriveFront] - nMotorEncoder[rightDriveFront];
+
+		//Step controllers
+		pos_PID_StepController(&leftPID);
+		pos_PID_StepController(&rightPID);
+
+		//Set drive to controllers' outputs
+		setLeftDriveMotorsRaw(pos_PID_GetOutput(&leftPID));
+		setRightDriveMotorsRaw(pos_PID_GetOutput(&leftPID) - pos_PID_GetOutput(&rightPID));
+
+		//writeDebugStreamLine("%d, %d", pos_PID_GetError(&leftPID), pos_PID_GetError(&rightPID));
+
+		//Exit if taking too long
+		if (timer_GetDTFromMarker(&t) > timeout)
+		{
+			setDriveMotorsRaw(0);
+			return 1;
+		}
+
+		//Exit if controller's output has dropped too low to move the robot
+		if (abs(pos_PID_GetOutput(&leftPID)) <= 10)
+		{
+			setDriveMotorsRaw(0);
+			return 1;
+		}
+
+		wait1Msec(10);
+
+	} while (abs(pos_PID_GetError(&leftPID)) > 0);
+
 	setAllDriveMotorsRaw(0);                              //Stop
 
 	return 0;
