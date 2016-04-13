@@ -160,7 +160,7 @@ byte driveTime(const int leftPower, const int rightPower, const int timeMs)
 /* Subroutine - Drives for distance in units (default: inches)             */
 /*                                                                         */
 /***************************************************************************/
-byte driveQuad(const int power, const int ticks)
+byte driveQuad(const int power, const int ticks, const float percentage = 0.1)
 {
 	//Clear encoders
 	SensorValue[leftDriveQuad] = 0;
@@ -173,88 +173,48 @@ byte driveQuad(const int power, const int ticks)
 	timer t;
 	timer_Initialize(&t);
 
-	//Position PID controllers for driving
-	pos_PID leftPID, rightPID;
-	pos_PID_InitController(&leftPID, leftDriveQuad, 0.5, 0, 0.04);
-	pos_PID_InitController(&rightPID, rightDriveQuad, 0.5, 0, 0.04);
-
-	//Set controllers' target position
-	pos_PID_SetTargetPosition(&leftPID, ticks);
-	pos_PID_SetTargetPosition(&rightPID, ticks);
-
 	//Marker for timeout
 	timer_PlaceMarker(&t);
 
-	//Drive to target
-	do
+	//Difference between sides
+	int rDiff;
+
+	//10% of power in the direction of rDiff
+	int rMod;
+
+	//Full power for 90% of ticks
+	while (abs(SensorValue[leftDriveQuad]) < abs(ticks) * 0.9)
 	{
-		//Step controllers
-		pos_PID_StepController(&leftPID);
-		pos_PID_StepController(&rightPID);
+		//Difference between left and right sides
+		rDiff = abs(SensorValue[leftDriveQuad]) - abs(SensorValue[rightDriveQuad]);
 
-		//Set drive to controllers' outputs
-		setLeftDriveMotorsRaw(pos_PID_GetOutput(&leftPID));
-		setRightDriveMotorsRaw(pos_PID_GetOutput(&rightPID));
+		//10% of power in the direction of rDiff, determined by which side is lagging
+		rMod = sgn(rDiff) * power * percentage;
 
-		//writeDebugStreamLine("%d, %d", pos_PID_GetError(&leftPID), pos_PID_GetError(&rightPID));
+		//Directly contorl left side and have right side follow
+		setLeftDriveMotorsRaw(power);
+		setRightDriveMotorsRaw(power + rMod);
 
-		//Exit if taking too long
-		if (timer_GetDTFromMarker(&t) > timeout)
-		{
-			setDriveMotorsRaw(0);
-			return 1;
-		}
-
-		//Exit if both controller's outputs have dropped too low to move the robot
-		if (abs(pos_PID_GetOutput(&leftPID)) <= 10 && abs(pos_PID_GetOutput(&rightPID)) <= 10)
-		{
-			setDriveMotorsRaw(0);
-			return 1;
-		}
-
-		wait1Msec(10);
+		wait1Msec(1);
 	}
-	while (abs(pos_PID_GetError(&leftPID)) > 0 || abs(pos_PID_GetError(&rightPID)) > 0);
 
-	// //Difference between sides
-	// int rDiff;
+	//1/3 power for last 10% of ticks
+	while (abs(SensorValue[leftDriveQuad]) < abs(ticks) - 10)
+	{
+		//Difference between sides
+		rDiff = abs(SensorValue[leftDriveQuad]) - abs(SensorValue[rightDriveQuad]);
 
-	// //10% of power in the direction of rDiff
-	// int rMod;
+		//10% of power in the direction of rDiff, determined by which side is lagging
+		rMod = sgn(rDiff) * power * percentage;
 
-	// //Full power for 90% of ticks
-	// while (abs(SensorValue[leftDriveQuad]) < abs(ticks) * 0.9)
-	// {
-	// 	//Difference between left and right sides
-	// 	rDiff = abs(SensorValue[leftDriveQuad]) - abs(SensorValue[rightDriveQuad]);
+		//Directly control left side and have right side follow
+		setLeftDriveMotorsRaw(power / 3);
+		setRightDriveMotorsRaw((power / 3) + rMod);
 
-	// 	//10% of power in the direction of rDiff, determined by which side is lagging
-	// 	rMod = sgn(rDiff) * power * 0.1;
+		wait1Msec(1);
+	}
 
-	// 	//Directly contorl left side and have right side follow
-	// 	setLeftDriveMotorsRaw(power);
-	// 	setRightDriveMotorsRaw(power + rMod);
-
-	// 	wait1Msec(1);
-	// }
-
-	// //1/3 power for last 10% of ticks
-	// while (abs(SensorValue[leftDriveQuad]) < abs(ticks) - 10)
-	// {
-	// 	//Difference between sides
-	// 	rDiff = abs(SensorValue[leftDriveQuad]) - abs(SensorValue[rightDriveQuad]);
-
-	// 	//10% of power in the direction of rDiff, determined by which side is lagging
-	// 	rMod = sgn(rDiff) * power * 0.1;
-
-	// 	//Directly control left side and have right side follow
-	// 	setLeftDriveMotorsRaw(power / 3);
-	// 	setRightDriveMotorsRaw((power / 3) + rMod);
-
-	// 	wait1Msec(1);
-	// }
-
-	// driveTime(-1 * (power / 2), -1 * (power / 2), 50);    //Brake at -50% power for a short time to eliminate momentum
+	driveTime(-1 * (power / 2), -1 * (power / 2), 50);    //Brake at -50% power for a short time to eliminate momentum
 	setDriveMotorsRaw(0);                                 //Stop
 
 	return 0;
@@ -265,7 +225,7 @@ byte driveQuad(const int power, const int ticks)
 /* Subroutine - Drives for distance in units (default: inches) using PID   */
 /*                                                                         */
 /***************************************************************************/
-byte driveQuad(const int ticks)
+byte driveQuad_PID(const int ticks)
 {
 	//Clear encoders
 	SensorValue[leftDriveQuad] = 0;
@@ -321,46 +281,8 @@ byte driveQuad(const int ticks)
 	}
 	while (abs(pos_PID_GetError(&leftPID)) > 0 || abs(pos_PID_GetError(&rightPID)) > 0);
 
-	// //Difference between sides
-	// int rDiff;
-
-	// //10% of power in the direction of rDiff
-	// int rMod;
-
-	// //Full power for 90% of ticks
-	// while (abs(SensorValue[leftDriveQuad]) < abs(ticks) * 0.9)
-	// {
-	// 	//Difference between left and right sides
-	// 	rDiff = abs(SensorValue[leftDriveQuad]) - abs(SensorValue[rightDriveQuad]);
-
-	// 	//10% of power in the direction of rDiff, determined by which side is lagging
-	// 	rMod = sgn(rDiff) * power * 0.1;
-
-	// 	//Directly contorl left side and have right side follow
-	// 	setLeftDriveMotorsRaw(power);
-	// 	setRightDriveMotorsRaw(power + rMod);
-
-	// 	wait1Msec(1);
-	// }
-
-	// //1/3 power for last 10% of ticks
-	// while (abs(SensorValue[leftDriveQuad]) < abs(ticks) - 10)
-	// {
-	// 	//Difference between sides
-	// 	rDiff = abs(SensorValue[leftDriveQuad]) - abs(SensorValue[rightDriveQuad]);
-
-	// 	//10% of power in the direction of rDiff, determined by which side is lagging
-	// 	rMod = sgn(rDiff) * power * 0.1;
-
-	// 	//Directly control left side and have right side follow
-	// 	setLeftDriveMotorsRaw(power / 3);
-	// 	setRightDriveMotorsRaw((power / 3) + rMod);
-
-	// 	wait1Msec(1);
-	// }
-
-	// driveTime(-1 * (power / 2), -1 * (power / 2), 50);    //Brake at -50% power for a short time to eliminate momentum
-	setDriveMotorsRaw(0);                                 //Stop
+	//Stop
+	setDriveMotorsRaw(0);
 
 	return 0;
 }
@@ -438,7 +360,7 @@ byte driveIME_PID(const int ticks)
 	do
 	{
 		//Update rDiff
-		rDiff - nMotorEncoder[leftDriveFront] - nMotorEncoder[rightDriveFront];
+		rDiff - nMotorEncoder[rightDriveFront] - nMotorEncoder[leftDriveFront];
 
 		//Step controllers
 		pos_PID_StepController(&leftPID);
